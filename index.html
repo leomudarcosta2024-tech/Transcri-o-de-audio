@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcritor de Áudio (Detector de Silêncio)</title>
+    <title>Transcritor de Áudio (Tiros Curtos)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -58,8 +58,8 @@
         } else {
             const recognition = new SpeechRecognition();
             
-            // Voltamos para contínuo para NÃO cortar quem fala rápido
-            recognition.continuous = true; 
+            // A MÁGICA ESTÁ AQUI: Desligamos o modo contínuo para evitar que a memória do celular engasgue
+            recognition.continuous = false; 
             recognition.interimResults = true; 
             recognition.lang = 'pt-BR'; 
 
@@ -74,8 +74,7 @@
             let wakeLock = null;
             
             let historicoCompleto = ''; 
-            let cronometroSilencio = null;
-            const TEMPO_DE_PAUSA = 1500; // 1.5 segundos de silêncio para limpar a memória
+            let textoDestaFrase = ''; 
 
             async function requestWakeLock() {
                 try {
@@ -95,6 +94,7 @@
 
             recognition.onstart = () => {
                 isRecognizing = true;
+                textoDestaFrase = ''; // Garante que a frase atual comece limpa
                 statusText.innerText = "🔴 Escutando...";
                 statusText.style.color = "#dc3545";
                 btnStart.disabled = true;
@@ -103,38 +103,23 @@
             };
 
             recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let textoFinalNovo = '';
+                let textoProvisorio = '';
+                textoDestaFrase = ''; 
 
-                // Lê apenas as palavras novas confirmadas
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                for (let i = 0; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        textoFinalNovo += event.results[i][0].transcript + ' ';
+                        textoDestaFrase += event.results[i][0].transcript + ' ';
                     } else {
-                        interimTranscript += event.results[i][0].transcript;
+                        textoProvisorio += event.results[i][0].transcript;
                     }
                 }
                 
-                if (textoFinalNovo !== '') {
-                    historicoCompleto += textoFinalNovo;
-                }
-
-                finalTextSpan.innerHTML = historicoCompleto;
-                interimTextSpan.innerHTML = interimTranscript;
+                // Exibe o histórico acumulado + a frase que ele acabou de processar
+                finalTextSpan.innerHTML = historicoCompleto + textoDestaFrase;
+                interimTextSpan.innerHTML = textoProvisorio;
                 
                 const box = document.getElementById('transcript-box');
                 box.scrollTop = box.scrollHeight;
-
-                // DETECTOR DE SILÊNCIO:
-                // Sempre que ele escuta qualquer som (mesmo que provisório), ele zera a bomba relógio.
-                clearTimeout(cronometroSilencio);
-                
-                // Se ficar 1.5 segundos em silêncio total, a bomba explode e ele reinicia o microfone sozinho
-                cronometroSilencio = setTimeout(() => {
-                    if (isRecognizing) {
-                        recognition.stop(); // Isso força a limpeza de memória durante a pausa
-                    }
-                }, TEMPO_DE_PAUSA);
             };
 
             recognition.onerror = (event) => {
@@ -148,13 +133,18 @@
             };
 
             recognition.onend = () => {
-                // Religa instantaneamente. Como isso foi disparado na pausa da fala, o ponto cego passa despercebido.
+                // Quando o professor pausa e a gravação encerra:
+                // Pegamos a frase perfeita e guardamos no histórico geral para sempre
+                historicoCompleto += textoDestaFrase;
+                textoDestaFrase = ''; // Limpa para a próxima frase
+
+                // E se o botão "Parar" não foi clicado, religamos o microfone instantaneamente
                 if (isRecognizing) {
                     setTimeout(() => {
                         if (isRecognizing) {
                             try { recognition.start(); } catch(e) {}
                         }
-                    }, 50); 
+                    }, 100); // Um delay quase imperceptível de 100ms apenas para o Chrome respirar
                 } else {
                     statusText.innerText = "Parado.";
                     statusText.style.color = "#666";
@@ -163,7 +153,6 @@
                     btnStart.innerHTML = "🔄 Reiniciar";
                     btnStart.style.backgroundColor = "#007bff"; 
                     releaseWakeLock(); 
-                    clearTimeout(cronometroSilencio);
                 }
             };
 
@@ -180,6 +169,7 @@
 
             btnClear.addEventListener('click', () => {
                 historicoCompleto = '';
+                textoDestaFrase = '';
                 finalTextSpan.innerHTML = '';
                 interimTextSpan.innerHTML = '';
             });
