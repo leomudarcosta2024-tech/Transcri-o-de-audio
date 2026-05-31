@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcritor de Aulas (Otimizado)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        #status {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        #transcript-box {
+            width: 100%;
+            max-width: 600px;
+            flex-grow: 1;
+            background-color: #fff;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            padding: 15px;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            line-height: 1.5;
+        }
+
+        #final-text { color: #000; }
+        #interim-text { color: #888; font-style: italic; }
+
+        .btn-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        button {
+            flex: 1;
+            min-width: 30%;
+            padding: 15px 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        button:active { opacity: 0.8; transform: scale(0.98); }
+        
+        #btn-start { background-color: #28a745; } 
+        #btn-stop { background-color: #dc3545; } 
+        #btn-clear { background-color: #6c757d; } 
+        
+        button:disabled {
+            background-color: #cccccc !important; 
+            cursor: not-allowed;
+            transform: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Transcritor de Aulas</h1>
+    <div id="status">Pronto para iniciar.</div>
+
+    <div id="transcript-box">
+        <span id="final-text"></span>
+        <span id="interim-text"></span>
+    </div>
+
+    <div class="btn-container">
+        <button id="btn-start">▶ Iniciar</button>
+        <button id="btn-stop" disabled>⏹ Parar</button>
+        <button id="btn-clear">🗑️ Limpar</button>
+    </div>
+
+    <script>
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            alert("Seu navegador não suporta a API de reconhecimento de voz. Tente usar o Google Chrome.");
+            document.getElementById('status').innerText = "Erro: Navegador não suportado.";
+        } else {
+            const recognition = new SpeechRecognition();
+            
+            recognition.continuous = true; 
+            recognition.interimResults = true; 
+            recognition.lang = 'pt-BR'; 
+
+            const btnStart = document.getElementById('btn-start');
+            const btnStop = document.getElementById('btn-stop');
+            const btnClear = document.getElementById('btn-clear');
+            const statusText = document.getElementById('status');
+            const finalTextSpan = document.getElementById('final-text');
+            const interimTextSpan = document.getElementById('interim-text');
+
+            let finalTranscript = '';
+            let isRecognizing = false;
+            let audioStream = null; // Guardará o estado do filtro do microfone
+
+            recognition.onstart = () => {
+                isRecognizing = true;
+                statusText.innerText = "🔴 Escutando (Filtros Ativados)...";
+                statusText.style.color = "#dc3545";
+                
+                btnStart.disabled = true;
+                btnStop.disabled = false;
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                finalTextSpan.innerHTML = finalTranscript;
+                interimTextSpan.innerHTML = interimTranscript;
+                
+                const box = document.getElementById('transcript-box');
+                box.scrollTop = box.scrollHeight;
+            };
+
+            recognition.onerror = (event) => {
+                console.warn("Aviso de reconhecimento:", event.error);
+                if (event.error === 'not-allowed') {
+                    statusText.innerText = "Erro: Permissão de microfone negada.";
+                    isRecognizing = false;
+                    
+                    btnStart.disabled = false;
+                    btnStop.disabled = true;
+                    btnStart.innerHTML = "▶ Iniciar";
+                    btnStart.style.backgroundColor = "#28a745";
+                }
+            };
+
+            recognition.onend = () => {
+                if (isRecognizing) {
+                    try { recognition.start(); } catch(e) {}
+                } else {
+                    statusText.innerText = "Parado.";
+                    statusText.style.color = "#666";
+                    
+                    btnStart.disabled = false;
+                    btnStop.disabled = true;
+                    
+                    btnStart.innerHTML = "🔄 Reiniciar";
+                    btnStart.style.backgroundColor = "#007bff"; 
+                }
+            };
+
+            // Ação: Iniciar (com os novos filtros)
+            btnStart.addEventListener('click', async () => {
+                btnStart.innerHTML = "▶ Iniciar";
+                btnStart.style.backgroundColor = "#28a745";
+                statusText.innerText = "Preparando otimização de áudio...";
+
+                try {
+                    // 1. Força a abertura do microfone com ganho e redução de ruído
+                    audioStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+
+                    // 2. Após ativar os filtros na placa de som, inicia a API de texto
+                    recognition.start();
+                } catch (err) {
+                    console.error("Erro ao aplicar filtros de áudio:", err);
+                    statusText.innerText = "Iniciando sem filtros (permissão falhou).";
+                    // Fallback: se os filtros derem erro, tenta iniciar o reconhecimento normal
+                    try { recognition.start(); } catch(e) {}
+                }
+            });
+
+            // Ação: Parar
+            btnStop.addEventListener('click', () => {
+                isRecognizing = false; 
+                recognition.stop(); 
+                
+                // Desliga a conexão paralela do microfone para economizar bateria
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                }
+            });
+
+            // Ação: Limpar
+            btnClear.addEventListener('click', () => {
+                finalTranscript = '';
+                finalTextSpan.innerHTML = '';
+                interimTextSpan.innerHTML = '';
+                document.getElementById('transcript-box').scrollTop = 0;
+            });
+        }
+    </script>
+</body>
+</html>
