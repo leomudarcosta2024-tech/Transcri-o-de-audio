@@ -71,60 +71,66 @@
             let finalTranscript = '';
             let isRecognizing = false;
             let wakeLock = null;
+            
+            // Variável de memória para evitar palavras repetidas
+            let ultimaFraseFinal = '';
 
-            // Função para manter a tela do celular acesa
             async function requestWakeLock() {
                 try {
                     if ('wakeLock' in navigator) {
                         wakeLock = await navigator.wakeLock.request('screen');
-                        console.log('Tela bloqueada para não apagar.');
                     }
                 } catch (err) {
                     console.warn(`Erro no WakeLock: ${err.message}`);
                 }
             }
 
-            // Função para liberar a tela quando parar
             function releaseWakeLock() {
                 if (wakeLock !== null) {
-                    wakeLock.release().then(() => {
-                        wakeLock = null;
-                        console.log('Bloqueio de tela liberado.');
-                    });
+                    wakeLock.release().then(() => { wakeLock = null; });
                 }
             }
 
             recognition.onstart = () => {
                 isRecognizing = true;
-                statusText.innerText = "🔴 Escutando (Tela protegida)...";
+                statusText.innerText = "🔴 Escutando...";
                 statusText.style.color = "#dc3545";
                 btnStart.disabled = true;
                 btnStop.disabled = false;
-                requestWakeLock(); // Pede para manter a tela acesa
+                requestWakeLock(); 
             };
 
             recognition.onresult = (event) => {
                 let interimTranscript = '';
+                
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    let pedacoDeTexto = event.results[i][0].transcript;
+
                     if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript + ' ';
+                        // Limpa espaços extras no começo e no fim da frase
+                        let textoLimpo = pedacoDeTexto.trim();
+                        
+                        // FILTRO ANTI-REPETIÇÃO: Só adiciona se o texto for diferente da última frase processada
+                        if (textoLimpo !== ultimaFraseFinal && textoLimpo !== '') {
+                            finalTranscript += textoLimpo + ' ';
+                            ultimaFraseFinal = textoLimpo; // Guarda esta frase na memória para comparar com a próxima
+                        }
                     } else {
-                        interimTranscript += event.results[i][0].transcript;
+                        interimTranscript += pedacoDeTexto;
                     }
                 }
+                
                 finalTextSpan.innerHTML = finalTranscript;
                 interimTextSpan.innerHTML = interimTranscript;
+                
                 const box = document.getElementById('transcript-box');
                 box.scrollTop = box.scrollHeight;
             };
 
             recognition.onerror = (event) => {
-                console.warn("Erro recebido:", event.error);
-                
-                // Erros silenciosos (como ausência de som temporária) não devem parar tudo
                 if (event.error === 'not-allowed' || event.error === 'audio-capture') {
                     statusText.innerText = "Erro: Microfone bloqueado ou em uso.";
-                    isRecognizing = false; // Força a parada segura
+                    isRecognizing = false; 
                     btnStart.disabled = false;
                     btnStop.disabled = true;
                     releaseWakeLock();
@@ -133,10 +139,9 @@
 
             recognition.onend = () => {
                 if (isRecognizing) {
-                    // DELAY DE SEGURANÇA: Espera meio segundo antes de religar para não ser bloqueado como Spam
                     setTimeout(() => {
                         if (isRecognizing) {
-                            try { recognition.start(); } catch(e) { console.warn("Falha no reinício automático."); }
+                            try { recognition.start(); } catch(e) {}
                         }
                     }, 500); 
                 } else {
@@ -146,7 +151,7 @@
                     btnStop.disabled = true;
                     btnStart.innerHTML = "🔄 Reiniciar";
                     btnStart.style.backgroundColor = "#007bff"; 
-                    releaseWakeLock(); // Deixa a tela apagar normalmente
+                    releaseWakeLock(); 
                 }
             };
 
@@ -163,6 +168,7 @@
 
             btnClear.addEventListener('click', () => {
                 finalTranscript = '';
+                ultimaFraseFinal = ''; // Limpa a memória de repetição também
                 finalTextSpan.innerHTML = '';
                 interimTextSpan.innerHTML = '';
             });
