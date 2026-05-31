@@ -71,9 +71,9 @@
             let isRecognizing = false;
             let wakeLock = null;
             
-            // NOVA LÓGICA DE MEMÓRIA: Dividimos o texto em dois
-            let historicoCompleto = ''; // Guarda o que foi falado em ciclos passados
-            let finalDaSessaoAtual = ''; // Guarda apenas o que está sendo falado agora
+            // Variáveis do controle manual rígido
+            let historicoCompleto = ''; 
+            let ultimoIndiceProcessado = 0; // Nosso próprio ponteiro de controle
 
             async function requestWakeLock() {
                 try {
@@ -93,7 +93,8 @@
 
             recognition.onstart = () => {
                 isRecognizing = true;
-                finalDaSessaoAtual = ''; // Zera a memória da sessão toda vez que o microfone liga
+                // Toda vez que a API reinicia do zero, nós resetamos o nosso ponteiro
+                ultimoIndiceProcessado = 0; 
                 statusText.innerText = "🔴 Escutando...";
                 statusText.style.color = "#dc3545";
                 btnStart.disabled = true;
@@ -103,22 +104,25 @@
 
             recognition.onresult = (event) => {
                 let interimTranscript = '';
-                let textoFinalReconstruido = '';
 
-                // A MÁGICA ESTÁ AQUI: Começamos do índice 0 sempre, reconstruindo a frase do zero.
-                // Isso ignora se o Chrome engasgar e mandar o mesmo resultado duas vezes.
-                for (let i = 0; i < event.results.length; ++i) {
+                // LÓGICA RIGOROSA: Ignoramos o event.resultIndex do navegador. 
+                // Usamos APENAS a nossa variável ultimoIndiceProcessado para saber de onde continuar lendo.
+                for (let i = ultimoIndiceProcessado; i < event.results.length; ++i) {
+                    let pedacoDeTexto = event.results[i][0].transcript;
+
                     if (event.results[i].isFinal) {
-                        textoFinalReconstruido += event.results[i][0].transcript + ' ';
+                        // Salva direto no histórico definitivo e adiciona espaço
+                        historicoCompleto += pedacoDeTexto + ' ';
+                        
+                        // Trava esse índice. O aplicativo NUNCA mais vai ler a posição 'i' novamente.
+                        ultimoIndiceProcessado = i + 1; 
                     } else {
-                        interimTranscript += event.results[i][0].transcript;
+                        // Se ainda é provisório, apenas exibe na tela sem salvar na memória
+                        interimTranscript += pedacoDeTexto;
                     }
                 }
                 
-                finalDaSessaoAtual = textoFinalReconstruido;
-                
-                // Exibe na tela o histórico salvo + a frase reconstruída + a frase parcial
-                finalTextSpan.innerHTML = historicoCompleto + finalDaSessaoAtual;
+                finalTextSpan.innerHTML = historicoCompleto;
                 interimTextSpan.innerHTML = interimTranscript;
                 
                 const box = document.getElementById('transcript-box');
@@ -136,11 +140,6 @@
             };
 
             recognition.onend = () => {
-                // Quando o ciclo do microfone para (seja por pausa ou por limite de tempo)
-                // nós salvamos a frase perfeitamente construída no histórico
-                historicoCompleto += finalDaSessaoAtual; 
-                finalDaSessaoAtual = ''; // E limpamos a atual para o próximo ciclo
-
                 if (isRecognizing) {
                     setTimeout(() => {
                         if (isRecognizing) {
@@ -170,11 +169,10 @@
             });
 
             btnClear.addEventListener('click', () => {
-                // Limpa ambas as variáveis de memória
                 historicoCompleto = '';
-                finalDaSessaoAtual = '';
                 finalTextSpan.innerHTML = '';
                 interimTextSpan.innerHTML = '';
+                // Não zeramos o ultimoIndiceProcessado aqui para não quebrar a leitura se estiver gravando
             });
         }
     </script>
