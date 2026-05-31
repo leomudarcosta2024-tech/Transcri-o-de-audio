@@ -68,12 +68,12 @@
             const finalTextSpan = document.getElementById('final-text');
             const interimTextSpan = document.getElementById('interim-text');
 
-            let finalTranscript = '';
             let isRecognizing = false;
             let wakeLock = null;
             
-            // Variável de memória para evitar palavras repetidas
-            let ultimaFraseFinal = '';
+            // NOVA LÓGICA DE MEMÓRIA: Dividimos o texto em dois
+            let historicoCompleto = ''; // Guarda o que foi falado em ciclos passados
+            let finalDaSessaoAtual = ''; // Guarda apenas o que está sendo falado agora
 
             async function requestWakeLock() {
                 try {
@@ -93,6 +93,7 @@
 
             recognition.onstart = () => {
                 isRecognizing = true;
+                finalDaSessaoAtual = ''; // Zera a memória da sessão toda vez que o microfone liga
                 statusText.innerText = "🔴 Escutando...";
                 statusText.style.color = "#dc3545";
                 btnStart.disabled = true;
@@ -102,25 +103,22 @@
 
             recognition.onresult = (event) => {
                 let interimTranscript = '';
-                
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    let pedacoDeTexto = event.results[i][0].transcript;
+                let textoFinalReconstruido = '';
 
+                // A MÁGICA ESTÁ AQUI: Começamos do índice 0 sempre, reconstruindo a frase do zero.
+                // Isso ignora se o Chrome engasgar e mandar o mesmo resultado duas vezes.
+                for (let i = 0; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        // Limpa espaços extras no começo e no fim da frase
-                        let textoLimpo = pedacoDeTexto.trim();
-                        
-                        // FILTRO ANTI-REPETIÇÃO: Só adiciona se o texto for diferente da última frase processada
-                        if (textoLimpo !== ultimaFraseFinal && textoLimpo !== '') {
-                            finalTranscript += textoLimpo + ' ';
-                            ultimaFraseFinal = textoLimpo; // Guarda esta frase na memória para comparar com a próxima
-                        }
+                        textoFinalReconstruido += event.results[i][0].transcript + ' ';
                     } else {
-                        interimTranscript += pedacoDeTexto;
+                        interimTranscript += event.results[i][0].transcript;
                     }
                 }
                 
-                finalTextSpan.innerHTML = finalTranscript;
+                finalDaSessaoAtual = textoFinalReconstruido;
+                
+                // Exibe na tela o histórico salvo + a frase reconstruída + a frase parcial
+                finalTextSpan.innerHTML = historicoCompleto + finalDaSessaoAtual;
                 interimTextSpan.innerHTML = interimTranscript;
                 
                 const box = document.getElementById('transcript-box');
@@ -129,7 +127,7 @@
 
             recognition.onerror = (event) => {
                 if (event.error === 'not-allowed' || event.error === 'audio-capture') {
-                    statusText.innerText = "Erro: Microfone bloqueado ou em uso.";
+                    statusText.innerText = "Erro: Microfone bloqueado.";
                     isRecognizing = false; 
                     btnStart.disabled = false;
                     btnStop.disabled = true;
@@ -138,6 +136,11 @@
             };
 
             recognition.onend = () => {
+                // Quando o ciclo do microfone para (seja por pausa ou por limite de tempo)
+                // nós salvamos a frase perfeitamente construída no histórico
+                historicoCompleto += finalDaSessaoAtual; 
+                finalDaSessaoAtual = ''; // E limpamos a atual para o próximo ciclo
+
                 if (isRecognizing) {
                     setTimeout(() => {
                         if (isRecognizing) {
@@ -167,8 +170,9 @@
             });
 
             btnClear.addEventListener('click', () => {
-                finalTranscript = '';
-                ultimaFraseFinal = ''; // Limpa a memória de repetição também
+                // Limpa ambas as variáveis de memória
+                historicoCompleto = '';
+                finalDaSessaoAtual = '';
                 finalTextSpan.innerHTML = '';
                 interimTextSpan.innerHTML = '';
             });
