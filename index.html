@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcritor de Aulas (Otimizado)</title>
+    <title>Transcritor de Áudio Ambiente</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -29,7 +29,6 @@
             color: #666;
             margin-bottom: 20px;
             font-weight: bold;
-            text-align: center;
         }
 
         #transcript-box {
@@ -86,7 +85,7 @@
 </head>
 <body>
 
-    <h1>Transcritor de Aulas</h1>
+    <h1>Transcritor de Áudio</h1>
     <div id="status">Pronto para iniciar.</div>
 
     <div id="transcript-box">
@@ -122,11 +121,10 @@
 
             let finalTranscript = '';
             let isRecognizing = false;
-            let audioStream = null; // Guardará o estado do filtro do microfone
 
             recognition.onstart = () => {
                 isRecognizing = true;
-                statusText.innerText = "🔴 Escutando (Filtros Ativados)...";
+                statusText.innerText = "🔴 Escutando...";
                 statusText.style.color = "#dc3545";
                 
                 btnStart.disabled = true;
@@ -157,6 +155,7 @@
                     statusText.innerText = "Erro: Permissão de microfone negada.";
                     isRecognizing = false;
                     
+                    // Reseta os botões em caso de bloqueio de permissão
                     btnStart.disabled = false;
                     btnStop.disabled = true;
                     btnStart.innerHTML = "▶ Iniciar";
@@ -166,6 +165,7 @@
 
             recognition.onend = () => {
                 if (isRecognizing) {
+                    // Tenta reiniciar silenciosamente se parou por causa de silêncio
                     try { recognition.start(); } catch(e) {}
                 } else {
                     statusText.innerText = "Parado.";
@@ -179,45 +179,24 @@
                 }
             };
 
-            // Ação: Iniciar (com os novos filtros)
-            btnStart.addEventListener('click', async () => {
+            btnStart.addEventListener('click', () => {
+                // Antes de iniciar, devolve o visual original ao botão (caso estivesse como "Reiniciar")
                 btnStart.innerHTML = "▶ Iniciar";
                 btnStart.style.backgroundColor = "#28a745";
-                statusText.innerText = "Preparando otimização de áudio...";
+                statusText.innerText = "Preparando microfone...";
 
                 try {
-                    // 1. Força a abertura do microfone com ganho e redução de ruído
-                    audioStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
-                        }
-                    });
-
-                    // 2. Após ativar os filtros na placa de som, inicia a API de texto
                     recognition.start();
-                } catch (err) {
-                    console.error("Erro ao aplicar filtros de áudio:", err);
-                    statusText.innerText = "Iniciando sem filtros (permissão falhou).";
-                    // Fallback: se os filtros derem erro, tenta iniciar o reconhecimento normal
-                    try { recognition.start(); } catch(e) {}
+                } catch (e) {
+                    console.log("A API já estava em processo de inicialização.");
                 }
             });
 
-            // Ação: Parar
             btnStop.addEventListener('click', () => {
                 isRecognizing = false; 
                 recognition.stop(); 
-                
-                // Desliga a conexão paralela do microfone para economizar bateria
-                if (audioStream) {
-                    audioStream.getTracks().forEach(track => track.stop());
-                    audioStream = null;
-                }
             });
 
-            // Ação: Limpar
             btnClear.addEventListener('click', () => {
                 finalTranscript = '';
                 finalTextSpan.innerHTML = '';
