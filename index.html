@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcritor de Áudio</title>
+    <title>Transcritor de Áudio Seguro</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -13,7 +13,7 @@
             height: 100vh; box-sizing: border-box;
         }
         h1 { font-size: 1.5rem; text-align: center; margin-bottom: 10px; }
-        #status { font-size: 0.9rem; color: #666; margin-bottom: 20px; font-weight: bold; }
+        #status { font-size: 0.9rem; color: #666; margin-bottom: 20px; font-weight: bold; text-align: center;}
         #transcript-box {
             width: 100%; max-width: 600px; flex-grow: 1;
             background-color: #fff; border: 2px solid #ddd; border-radius: 12px;
@@ -70,13 +70,37 @@
 
             let finalTranscript = '';
             let isRecognizing = false;
+            let wakeLock = null;
+
+            // Função para manter a tela do celular acesa
+            async function requestWakeLock() {
+                try {
+                    if ('wakeLock' in navigator) {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        console.log('Tela bloqueada para não apagar.');
+                    }
+                } catch (err) {
+                    console.warn(`Erro no WakeLock: ${err.message}`);
+                }
+            }
+
+            // Função para liberar a tela quando parar
+            function releaseWakeLock() {
+                if (wakeLock !== null) {
+                    wakeLock.release().then(() => {
+                        wakeLock = null;
+                        console.log('Bloqueio de tela liberado.');
+                    });
+                }
+            }
 
             recognition.onstart = () => {
                 isRecognizing = true;
-                statusText.innerText = "🔴 Escutando...";
+                statusText.innerText = "🔴 Escutando (Tela protegida)...";
                 statusText.style.color = "#dc3545";
                 btnStart.disabled = true;
                 btnStop.disabled = false;
+                requestWakeLock(); // Pede para manter a tela acesa
             };
 
             recognition.onresult = (event) => {
@@ -95,17 +119,26 @@
             };
 
             recognition.onerror = (event) => {
-                if (event.error === 'not-allowed') {
-                    statusText.innerText = "Erro: Permissão negada.";
-                    isRecognizing = false;
+                console.warn("Erro recebido:", event.error);
+                
+                // Erros silenciosos (como ausência de som temporária) não devem parar tudo
+                if (event.error === 'not-allowed' || event.error === 'audio-capture') {
+                    statusText.innerText = "Erro: Microfone bloqueado ou em uso.";
+                    isRecognizing = false; // Força a parada segura
                     btnStart.disabled = false;
                     btnStop.disabled = true;
+                    releaseWakeLock();
                 }
             };
 
             recognition.onend = () => {
                 if (isRecognizing) {
-                    try { recognition.start(); } catch(e) {} // Tenta manter contínuo
+                    // DELAY DE SEGURANÇA: Espera meio segundo antes de religar para não ser bloqueado como Spam
+                    setTimeout(() => {
+                        if (isRecognizing) {
+                            try { recognition.start(); } catch(e) { console.warn("Falha no reinício automático."); }
+                        }
+                    }, 500); 
                 } else {
                     statusText.innerText = "Parado.";
                     statusText.style.color = "#666";
@@ -113,6 +146,7 @@
                     btnStop.disabled = true;
                     btnStart.innerHTML = "🔄 Reiniciar";
                     btnStart.style.backgroundColor = "#007bff"; 
+                    releaseWakeLock(); // Deixa a tela apagar normalmente
                 }
             };
 
